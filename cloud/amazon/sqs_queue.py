@@ -69,6 +69,12 @@ options:
     required: false
     default: null
     version_added: "2.1"
+  redrive_policy:
+    description:
+      - The json dict policy describing Redrive queue behaviour
+    required: false
+    default: null
+    version_added: "2.2"
 extends_documentation_fragment:
     - aws
     - ec2
@@ -85,6 +91,12 @@ EXAMPLES = '''
     delivery_delay: 30
     receive_message_wait_time: 20
     policy: "{{ json_dict }}"
+
+# Create SQS queue with dead letters
+- sqs_queue:
+    name: my-queue
+    region: ap-southeast-2
+    redrive_policy: "{\"maxReceiveCount\":\"5\", \"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:112233445566:dead-letters\"}"
 
 # Delete SQS queue
 - sqs_queue:
@@ -112,6 +124,7 @@ def create_or_update_sqs_queue(connection, module):
         delivery_delay=module.params.get('delivery_delay'),
         receive_message_wait_time=module.params.get('receive_message_wait_time'),
         policy=module.params.get('policy'),
+        redrive_policy=module.params.get('redrive_policy'),
     )
 
     result = dict(
@@ -147,7 +160,8 @@ def update_sqs_queue(queue,
                      maximum_message_size=None,
                      delivery_delay=None,
                      receive_message_wait_time=None,
-                     policy=None):
+                     policy=None,
+                     redrive_policy=None):
     changed = False
 
     changed = set_queue_attribute(queue, 'VisibilityTimeout', default_visibility_timeout,
@@ -162,6 +176,8 @@ def update_sqs_queue(queue,
                                   check_mode=check_mode) or changed
     changed = set_queue_attribute(queue, 'Policy', policy,
                                   check_mode=check_mode) or changed
+    changed = set_queue_attribute(queue, 'RedrivePolicy', redrive_policy,
+                                  check_mode=check_mode) or changed
     return changed
 
 
@@ -175,7 +191,7 @@ def set_queue_attribute(queue, attribute, value, check_mode=False):
         existing_value = ''
 
     # convert dict attributes to JSON strings (sort keys for comparing)
-    if attribute is 'Policy':
+    if (attribute is 'Policy') or (attribute is 'RedrivePolicy'):
         value = json.dumps(value, sort_keys=True)
         if existing_value:
             existing_value = json.dumps(json.loads(existing_value), sort_keys=True)
@@ -224,6 +240,7 @@ def main():
         delivery_delay=dict(type='int'),
         receive_message_wait_time=dict(type='int'),
         policy=dict(type='dict', required=False),
+        redrive_policy=dict(type='dict', required=False),
     ))
 
     module = AnsibleModule(
